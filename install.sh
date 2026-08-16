@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
+PROFILE_NAME="${DSH_PROFILE:-web}"
+PROFILE_DIR="$DSH_HOME/profiles/$PROFILE_NAME"
+PROFILE_PACKAGE="$PROFILE_DIR/package.json"
+PATCH_FILE="$PROFILE_DIR/cordis.patch.yml"
+BIN_DIR="$DSH_HOME/bin"
+command -v node >/dev/null 2>&1 || { echo "Node.js is required" >&2; exit 1; }
+mkdir -p "$PROFILE_DIR" "$BIN_DIR"
+if [ ! -f "$PROFILE_PACKAGE" ]; then cat > "$PROFILE_PACKAGE" <<'JSON'
+{"name":"dsh-profile-web","private":true,"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}},"dependencies":{}}
+JSON
+fi
+node - "$PROFILE_PACKAGE" <<'NODE'
+const fs = require('fs'); const p = process.argv[2]; const d = JSON.parse(fs.readFileSync(p, 'utf8')); d.dependencies = d.dependencies || {}; d.dependencies['@deepseek-ai/dsh-web-fetch-http'] = d.dependencies['@deepseek-ai/dsh-web-fetch-http'] || '^0.1.0-rc.6'; fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n')
+NODE
+if [ ! -f "$PATCH_FILE" ]; then printf '%s\n' '# better-dsh profile patch' '- insert:' '  - id: web-fetch-http' "    name: '@deepseek-ai/dsh-web-fetch-http'" > "$PATCH_FILE"; elif ! grep -q 'id: web-fetch-http' "$PATCH_FILE"; then printf '%s\n' '  - id: web-fetch-http' "    name: '@deepseek-ai/dsh-web-fetch-http'" >> "$PATCH_FILE"; fi
+cp "$REPO_ROOT/lib/dsh-supervisor.sh" "$BIN_DIR/dsh-supervisor.sh"; cp "$REPO_ROOT/bin/dsh" "$BIN_DIR/dsh"; chmod +x "$BIN_DIR/dsh" "$BIN_DIR/dsh-supervisor.sh"
+if command -v pnpm >/dev/null 2>&1; then (cd "$PROFILE_DIR" && pnpm install); else echo "pnpm is not installed; run pnpm install in $PROFILE_DIR" >&2; fi
+PATH_LINE='export PATH="$HOME/.dsh/bin:$PATH"'; for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do touch "$rc"; grep -Fq "$PATH_LINE" "$rc" || printf '\n# better-dsh\n%s\n' "$PATH_LINE" >> "$rc"; done
+echo "better-dsh installed; open a new terminal, then use dsh start or dsh restart"
