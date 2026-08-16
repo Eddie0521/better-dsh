@@ -1,4 +1,28 @@
 #!/usr/bin/env bash
 set -u
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec bash "$ROOT/lib/dsh-supervisor.sh" "$@"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$DIR/dsh-supervisor.sh" ]; then
+  SUPERVISOR="$DIR/dsh-supervisor.sh"
+else
+  SUPERVISOR="$(dirname "$DIR")/lib/dsh-supervisor.sh"
+fi
+
+# Supervisor subcommands stay with the supervisor; every other invocation
+# (dsh web, dsh plugin …, dsh --profile …) passes through to the official
+# DeepSeek Harness CLI.
+case "${1:-}" in
+  start|stop|restart|status)
+    exec bash "$SUPERVISOR" "$@"
+    ;;
+  --profile)
+    # `dsh --profile web` alone (no subcommand) = run that profile; the
+    # supervisor treats it as the legacy start form.
+    if [ $# -eq 2 ]; then exec bash "$SUPERVISOR" start; fi
+    exec bash "$SUPERVISOR" "$@"
+    ;;
+esac
+
+if [ -n "${DSH_REAL_BIN:-}" ] && [ -x "$DSH_REAL_BIN" ]; then
+  exec "$DSH_REAL_BIN" "$@"
+fi
+exec npx --yes @deepseek-ai/dsh "$@"

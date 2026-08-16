@@ -1,0 +1,20 @@
+# dsh-market bundle patch
+
+# This file is the `dsh.bundle.patch` layer of the published npm package: when
+# the plugin is installed through the official CLI —
+#
+#   dsh plugin --profile <name> add dsh-market@<version>
+#
+# — the command reconciles `dsh.profile.bundles` against installed packages
+# and, seeing this declaration, appends `dsh-market` to the bundle stack. The
+# profile boot then merges THIS patch (a single `insert` of the plugin row)
+# exactly like the manual cordis.patch.yml mount line. No profile file edits
+# needed — one command installs and mounts.
+#
+# The better-dsh installer (install.sh) appends the same insert row to the
+# profile's own cordis.patch.yml when it links the local plugins/dsh-market
+# directory; remove that manual row before switching to the bundle channel to
+# avoid double-mounting.
+- insert:
+    - id: dsh-market
+      name: 'dsh-market'

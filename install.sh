@@ -17,6 +17,38 @@ node - "$PROFILE_PACKAGE" <<'NODE'
 const fs = require('fs'); const p = process.argv[2]; const d = JSON.parse(fs.readFileSync(p, 'utf8')); d.dependencies = d.dependencies || {}; d.dependencies['@deepseek-ai/dsh-web-fetch-http'] = d.dependencies['@deepseek-ai/dsh-web-fetch-http'] || '^0.1.0-rc.6'; fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n')
 NODE
 if [ ! -f "$PATCH_FILE" ]; then printf '%s\n' '# better-dsh profile patch' '- insert:' '  - id: web-fetch-http' "    name: '@deepseek-ai/dsh-web-fetch-http'" > "$PATCH_FILE"; elif ! grep -q 'id: web-fetch-http' "$PATCH_FILE"; then printf '%s\n' '  - id: web-fetch-http' "    name: '@deepseek-ai/dsh-web-fetch-http'" >> "$PATCH_FILE"; fi
+
+# Local plugin packages (plugins/<name>): build when needed, link into the
+# profile's package.json, and mount each as a cordis loader entry. The
+# profile install step below then resolves the link: dependencies.
+ensure_plugin() {
+  local dir="$1" name
+  name="$(node -e "console.log(require(process.argv[1]).name)" "$dir/package.json" 2>/dev/null || true)"
+  [ -n "$name" ] || { echo "skip $dir: no package.json name" >&2; return 0; }
+  if [ ! -f "$dir/lib/client.js" ]; then
+    if command -v pnpm >/dev/null 2>&1; then
+      (cd "$dir" && pnpm install && pnpm build) || { echo "failed to build plugin $name (plugins/$(basename "$dir"))" >&2; return 1; }
+    else
+      echo "pnpm is required to build plugin $name (plugins/$(basename "$dir")); run pnpm install && pnpm build there" >&2; return 1
+    fi
+  fi
+  node - "$PROFILE_PACKAGE" "$dir" "$name" <<'NODE'
+const fs = require('fs'); const [p, dir, name] = process.argv.slice(2);
+const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+d.dependencies = d.dependencies || {};
+d.dependencies[name] = `link:${dir}`;
+fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n');
+NODE
+  if ! grep -Fq "id: $name" "$PATCH_FILE"; then
+    printf '%s\n' "  - id: $name" "    name: '$name'" >> "$PATCH_FILE"
+  fi
+}
+if [ -d "$REPO_ROOT/plugins" ]; then
+  for plugin_dir in "$REPO_ROOT"/plugins/*/; do
+    [ -d "$plugin_dir" ] && [ -f "$plugin_dir/package.json" ] && ensure_plugin "${plugin_dir%/}"
+  done
+fi
+
 cp "$REPO_ROOT/lib/dsh-supervisor.sh" "$BIN_DIR/dsh-supervisor.sh"; cp "$REPO_ROOT/bin/dsh" "$BIN_DIR/dsh"; chmod +x "$BIN_DIR/dsh" "$BIN_DIR/dsh-supervisor.sh"
 if command -v pnpm >/dev/null 2>&1; then (cd "$PROFILE_DIR" && pnpm install); else echo "pnpm is not installed; run pnpm install in $PROFILE_DIR" >&2; fi
 PATH_LINE='export PATH="$HOME/.dsh/bin:$PATH"'; for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do touch "$rc"; grep -Fq "$PATH_LINE" "$rc" || printf '\n# better-dsh\n%s\n' "$PATH_LINE" >> "$rc"; done
