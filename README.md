@@ -1,7 +1,7 @@
 <h4 align="right"><strong>English</strong> | <a href="README_CN.md">简体中文</a></h4>
 
 <p align="center">
-  <img src="assets/better-dsh.svg" alt="better-dsh" width="138" />
+  <img src="assets/deepseek.svg" alt="DeepSeek" width="138" />
 </p>
 
 <h1 align="center">better-dsh</h1>
