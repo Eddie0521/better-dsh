@@ -17,7 +17,7 @@
 - 🚀 **One-command start**: `dsh start` launches the Web UI at `http://127.0.0.1:3080` in the background, with `status`, `restart`, and `stop`.
 - ⚡ **One-command install**: `install.sh` creates your user-owned Web profile, builds and mounts every plugin under `plugins/`, and puts `dsh` on your PATH.
 - 🔄 **Restart from any side**: `dsh restart` is a detached restart — it returns immediately, a setsid worker bounces the server, and the outcome lands in a result file. Safe whether you run it in a terminal or an agent does (the browser session reconnects on its own).
-- 🔘 **One-click restart in the UI**: the `dsh-restart-button` plugin puts a refresh button at the right end of the sidebar's Settings row — click it to restart the server and auto-refresh the page (~4–5 s).
+- 🔘 **One-click restart in the UI**: the `dsh-restart-button` plugin puts a refresh button at the right end of the sidebar's Settings row. Any restart (button, agent `dsh_restart` tool, terminal) auto-refreshes the page and pops a "刷新成功" toast (~4–5 s).
 - 🏠 **No sudo required**: Everything installs under `~/.dsh`; no root access or system services.
 - 🔒 **Local only**: The managed UI binds to `127.0.0.1` on your machine.
 
