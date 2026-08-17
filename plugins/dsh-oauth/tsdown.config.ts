@@ -1,32 +1,109 @@
-import { defineConfig } from 'tsdown'
+/**
+ * tsdown build for dsh-oauth: the host half (lib/index.js, ESM node)
+ * plus one browser client bundle (lib/client.js, CJS closure factory)
+ * registering with the package-name id `dsh-oauth`.
+ */
+import { builtinModules } from 'node:module'
+import type { UserConfig } from 'tsdown'
 
-export default defineConfig({
-  entry: {
-    'index': 'src/index.ts',
-    'client': 'src/client/index.tsx',
+const NODE_BUILTINS = new Set([
+  ...builtinModules,
+  ...builtinModules.map(id => `node:${id}`),
+])
+
+/** Module specifiers the web shell shares into the frozen module table. */
+const CLIENT_EXTERNALS = [
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  'cordis',
+  '@deepseek-ai/dsh-client-ui-slots',
+  '@deepseek-ai/dsh-client-web-react',
+  '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-schema-form',
+  '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-locale',
+  '@deepseek-ai/dsh-client-ui-settings',
+]
+
+type BuildPlugin = NonNullable<UserConfig['plugins']>
+
+/** Reject Node builtins and cross-plugin value imports in the browser bundle. */
+function purityGatePlugin(): BuildPlugin {
+  return {
+    name: 'dsh-client-bundle-purity',
+    resolveId(source: string) {
+      if (NODE_BUILTINS.has(source)) {
+        throw new Error(
+          `client bundle purity: Node builtin "${source}" cannot run in the browser module table`,
+        )
+      }
+      if (!source.startsWith('@deepseek-ai/')) return null
+      if (CLIENT_EXTERNALS.includes(source)) return null
+      throw new Error(
+        `client bundle purity: "${source}" is not a platform module (CLIENT_EXTERNALS)`,
+      )
+    },
+  }
+}
+
+export default [
+  // Host bundle (Node ESM)
+  {
+    entry: { index: 'src/index.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    fixedExtension: false,
+    dts: false,
+    clean: true,
+    deps: {
+      neverBundle: [
+        'cordis',
+        '@deepseek-ai/dsh-credentials',
+        '@deepseek-ai/dsh-commands',
+        '@deepseek-ai/dsh-host-webserver',
+        '@deepseek-ai/dsh-timeout',
+        '@deepseek-ai/schemastery',
+        '@earendil-works/pi-ai',
+        'node:crypto',
+        'node:http',
+        'node:net',
+        'node:child_process',
+      ],
+    },
   },
-  outDir: 'lib',
-  format: 'esm',
-  dts: false,
-  clean: true,
-  target: 'node22',
-  platform: 'node',
-  outExtensions: () => ({ js: '.js' }),
-  deps: {
-    neverBundle: [
-      'cordis',
-      '@deepseek-ai/dsh-credentials',
-      '@deepseek-ai/dsh-commands',
-      '@deepseek-ai/dsh-host-webserver',
-      '@deepseek-ai/dsh-timeout',
-      '@deepseek-ai/schemastery',
-      '@earendil-works/pi-ai',
-      'react',
-      'react-dom',
-      'node:crypto',
-      'node:http',
-      'node:net',
-      'node:child_process',
-    ],
+  // Client bundle (browser CJS, wrapped in __ModuleLoader__.load)
+  {
+    entry: { client: 'src/client/index.tsx' },
+    outDir: 'lib',
+    format: 'cjs',
+    platform: 'browser',
+    dts: false,
+    sourcemap: true,
+    clean: false,
+    external: [...CLIENT_EXTERNALS],
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+      'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+      'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+      'import.meta.resolve': 'undefined',
+    },
+    inputOptions: {
+      resolve: {
+        conditionNames: ['browser', 'import', 'require', 'default'],
+      },
+    },
+    noExternal: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
+    plugins: [purityGatePlugin()],
+    outputOptions: {
+      entryFileNames: 'client.js',
+      banner: `window.__ModuleLoader__.load({ id: "dsh-oauth", factory: (require) => {`,
+      footer: `return module.exports; } });`,
+      intro: 'var module = { exports: {} }; var exports = module.exports;',
+      codeSplitting: false,
+    },
   },
-})
+] satisfies UserConfig[]
