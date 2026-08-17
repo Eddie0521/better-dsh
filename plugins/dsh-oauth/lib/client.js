@@ -18,10 +18,10 @@ window.__ModuleLoader__.load({
 				id: "dsh-oauth",
 				order: 15,
 				label: () => "OAuth 提供方",
-				inject: { t: (s) => s }
+				inject: () => ({})
 			}, OAuthSection));
 		}
-		function OAuthSection() {
+		function OAuthSection(_props) {
 			const [providers, setProviders] = (0, react.useState)([]);
 			const [selected, setSelected] = (0, react.useState)("");
 			const [models, setModels] = (0, react.useState)([]);

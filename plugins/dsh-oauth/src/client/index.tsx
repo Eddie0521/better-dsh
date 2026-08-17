@@ -33,11 +33,11 @@ export function apply(ctx: Context): void {
     id: 'dsh-oauth',
     order: 15,
     label: () => 'OAuth 提供方',
-    inject: { t: (s: string) => s },
+    inject: () => ({}),
   }, OAuthSection))
 }
 
-function OAuthSection() {
+function OAuthSection(_props: { [key: string]: unknown }): React.ReactElement | null {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [selected, setSelected] = useState<string>('')
   const [models, setModels] = useState<ModelInfo[]>([])
