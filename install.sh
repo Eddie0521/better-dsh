@@ -40,9 +40,51 @@ d.dependencies = d.dependencies || {};
 d.dependencies[name] = `link:${dir}`;
 fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n');
 NODE
-  if ! grep -Fq "id: $name" "$PATCH_FILE"; then
-    printf '%s\n' "  - id: $name" "    name: '$name'" >> "$PATCH_FILE"
-  fi
+  # A plugin must have exactly one mount source. Bundle-managed plugins are
+  # already inserted by the bundle layer; remove any stale profile insert —
+  # including the full continuation block (config, disabled, nested insert
+  # children, etc.) so no orphaned YAML fragments are left behind.
+  node - "$PROFILE_PACKAGE" "$PATCH_FILE" "$name" <<'NODE'
+const fs = require('fs');
+const [packageFile, patchFile, name] = process.argv.slice(2);
+const profile = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+const bundles = profile.dsh?.profile?.bundles || [];
+let patch = fs.existsSync(patchFile) ? fs.readFileSync(patchFile, 'utf8') : '';
+
+// Line-by-line removal of every entry whose id matches. A regex that only
+// strips the id+name lines leaves orphaned config/disabled fields behind;
+// scanning indentation boundaries catches the whole entry block.
+const lines = patch.split('\n');
+const kept = [];
+let skip = false;
+let skipIndent = 0;
+for (const line of lines) {
+  const m = line.match(/^(\s*)-\s*id:\s*[\x22\x27]?(.+?)[\x22\x27]?\s*$/);
+  if (m && m[2] === name) {
+    skip = true;
+    skipIndent = m[1].length;
+    continue;
+  }
+  if (skip) {
+    if (line.trim() === '') continue;
+    const ind = (line.match(/^(\s*)/) || ['', ''])[1].length;
+    if (ind > skipIndent) continue;
+    skip = false;
+  }
+  if (!skip) kept.push(line);
+}
+patch = kept.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').replace(/\n+$/, '\n');
+
+// Only mount via the manual channel when the plugin is NOT bundle-managed
+// (bundle-managed plugins are mounted by their own cordis.patch.yml).
+if (!bundles.includes(name)) {
+  if (!patch.includes(`- id: ${name}`)) {
+    if (patch && !patch.endsWith('\n')) patch += '\n';
+    patch += `  - id: ${name}\n    name: '${name}'\n`;
+  }
+}
+fs.writeFileSync(patchFile, patch);
+NODE
 }
 if [ -d "$REPO_ROOT/plugins" ]; then
   for plugin_dir in "$REPO_ROOT"/plugins/*/; do
