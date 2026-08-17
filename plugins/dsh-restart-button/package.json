@@ -1,0 +1,64 @@
+{
+  "name": "dsh-restart-button",
+  "version": "0.1.0",
+  "description": "DSH web 插件：在侧边栏底部「设置」行右端放一个刷新按钮，点击即执行 dsh restart（脱离式）并自动刷新页面。",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Eddie0521/better-dsh"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf lib && tsdown",
+    "bundle": "tsdown",
+    "watch": "tsdown --watch",
+    "prepare": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "restart",
+    "refresh"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "cordis": "^4.0.0-rc.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^5.6.0"
+  }
+}

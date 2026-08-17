@@ -1,0 +1,14 @@
+# dsh-restart-button bundle patch
+
+# When installed through the official CLI —
+#
+#   dsh plugin --profile <name> add dsh-restart-button
+#
+# — this insert row mounts the plugin via the bundle layer. The better-dsh
+# installer (install.sh) appends the same row to the profile's own
+# cordis.patch.yml when it links the local plugins/dsh-restart-button
+# directory; remove that manual row before switching channels to avoid
+# double-mounting.
+- insert:
+    - id: dsh-restart-button
+      name: 'dsh-restart-button'

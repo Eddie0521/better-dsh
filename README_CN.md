@@ -15,8 +15,9 @@
 ## 特性
 
 - 🚀 **一条命令启动**：`dsh start` 在后台启动 Web UI（`http://127.0.0.1:3080`），并提供 `status`、`restart`、`stop`。
-- ⚡ **一条命令安装**：`install.sh` 创建你的用户级 Web profile，并把 `dsh` 加入 PATH。
+- ⚡ **一条命令安装**：`install.sh` 创建你的用户级 Web profile、自动构建并挂载 `plugins/` 下的插件，并把 `dsh` 加入 PATH。
 - 🔄 **任意一侧都能重启**：`dsh restart` 是脱离式重启——立即返回，setsid 子进程完成弹跳，结果写入结果文件。终端执行或 agent 执行都安全（浏览器会话会自动重连）。
+- 🔘 **界面一键重启**：`dsh-restart-button` 插件在侧边栏底部「设置」行右端放一个刷新按钮，点击即重启服务并自动刷新页面（约 4-5 秒）。
 - 🏠 **无需 sudo**：全部安装到 `~/.dsh` 下，不需要 root 权限或系统服务。
 - 🔒 **仅限本机**：托管的 UI 只监听本机 `127.0.0.1`。
 
@@ -64,6 +65,21 @@ dsh stop
 supervisor 按 profile 端口（默认 `3080`）跟踪进程，而不仅是自己的 PID 文件：
 `dsh status` 能识别手动启动的服务（显示 `running (not supervised)`），
 `dsh start` 会直接接管它，`dsh stop` 也能停掉它。
+
+## 插件
+
+插件放在 `plugins/<name>/` 下——每个都是标准的 DSH 插件包（host 端 + `lib/client.js`
+浏览器 bundle）。`install.sh` 会自动构建缺失的 bundle、以 `link:` 依赖写入 profile、
+并追加 cordis patch `insert` 行，下次重启即挂载。
+
+```text
+plugins/
+  dsh-restart-button/   # 侧边栏「设置」行右端的一键重启按钮
+```
+
+目录里带 `.disabled` 标记的插件会被 `install.sh` 跳过（本地停用开关，标记已 gitignore）。
+每个插件也自带 `cordis.patch.yml`（npm 渠道用），所以 `dsh plugin --profile web add <name>`
+同样可装。
 
 ## 开发
 

@@ -29,7 +29,7 @@ start_profile() {
   # never blocked), instead of an overwrite of a foreign-tagged file (EPERM).
   rm -f "$PROFILE_DIR/cordis.yml" "$PROFILE_DIR/cordis.yml.tmp"
   if [ -n "${DSH_REAL_BIN:-}" ] && [ -x "$DSH_REAL_BIN" ]; then nohup "$DSH_REAL_BIN" --profile "$PROFILE_NAME" >>"$LOG_FILE" 2>&1 < /dev/null &
-  else command -v npx >/dev/null 2>&1 || { echo "npx is required; install Node.js first" >&2; return 1; }; nohup npx --yes @deepseek-ai/dsh --profile "$PROFILE_NAME" >>"$LOG_FILE" 2>&1 < /dev/null & fi
+  else command -v npx >/dev/null 2>&1 || { echo "npx is required; install Node.js first" >&2; return 1; }; nohup npx --yes --prefer-offline @deepseek-ai/dsh --profile "$PROFILE_NAME" >>"$LOG_FILE" 2>&1 < /dev/null & fi
   pid=$!; echo "$pid" > "$PID_FILE"; echo "started $PROFILE_NAME profile: pid $pid"; echo "log: $LOG_FILE"
 }
 stop_profile() {

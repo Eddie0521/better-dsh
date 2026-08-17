@@ -15,8 +15,9 @@
 ## Features
 
 - 🚀 **One-command start**: `dsh start` launches the Web UI at `http://127.0.0.1:3080` in the background, with `status`, `restart`, and `stop`.
-- ⚡ **One-command install**: `install.sh` creates your user-owned Web profile and puts `dsh` on your PATH.
+- ⚡ **One-command install**: `install.sh` creates your user-owned Web profile, builds and mounts every plugin under `plugins/`, and puts `dsh` on your PATH.
 - 🔄 **Restart from any side**: `dsh restart` is a detached restart — it returns immediately, a setsid worker bounces the server, and the outcome lands in a result file. Safe whether you run it in a terminal or an agent does (the browser session reconnects on its own).
+- 🔘 **One-click restart in the UI**: the `dsh-restart-button` plugin puts a refresh button at the right end of the sidebar's Settings row — click it to restart the server and auto-refresh the page (~4–5 s).
 - 🏠 **No sudo required**: Everything installs under `~/.dsh`; no root access or system services.
 - 🔒 **Local only**: The managed UI binds to `127.0.0.1` on your machine.
 
@@ -65,6 +66,23 @@ working.
 The supervisor tracks the process on the profile's port (default `3080`), not
 just its own PID file: `dsh status` reports a manually started server as
 `running (not supervised)`, `dsh start` adopts it, and `dsh stop` stops it.
+
+## Plugins
+
+Plugins live in `plugins/<name>/` — each is a standard DSH plugin package
+(host half + `lib/client.js` browser bundle). `install.sh` builds any missing
+bundle, adds a `link:` dependency to the profile, and appends the cordis patch
+`insert` row, so they mount on the next restart.
+
+```text
+plugins/
+  dsh-restart-button/   # one-click restart button in the sidebar Settings row
+```
+
+A directory containing a `.disabled` marker is skipped by `install.sh` (local
+opt-out; the marker is gitignored). Every plugin also ships its own
+`cordis.patch.yml` for the npm channel, so `dsh plugin --profile web add <name>`
+works too.
 
 ## Development
 
