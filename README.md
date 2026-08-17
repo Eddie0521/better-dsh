@@ -15,9 +15,8 @@
 ## Features
 
 - 🚀 **One-command start**: `dsh start` launches the Web UI at `http://127.0.0.1:3080` in the background, with `status`, `restart`, and `stop`.
-- ⚡ **One-command install**: `install.sh` creates your user-owned Web profile, installs the official HTTP Fetch Provider, builds and mounts every local plugin under `plugins/`, and puts `dsh` on your PATH.
-- 🧩 **Plugin market included**: the `dsh-market` plugin adds a searchable, downloads/stars-sorted, lazy-loaded plugin market tab to Settings → Plugins (see `plugins/dsh-market/`).
-- 🔄 **Safe restarts**: The supervisor lives outside the DSH process, so it can stop and restart DSH without killing itself.
+- ⚡ **One-command install**: `install.sh` creates your user-owned Web profile and puts `dsh` on your PATH.
+- 🔄 **Restart from any side**: `dsh restart` is a detached restart — it returns immediately, a setsid worker bounces the server, and the outcome lands in a result file. Safe whether you run it in a terminal or an agent does (the browser session reconnects on its own).
 - 🏠 **No sudo required**: Everything installs under `~/.dsh`; no root access or system services.
 - 🔒 **Local only**: The managed UI binds to `127.0.0.1` on your machine.
 
@@ -67,26 +66,6 @@ The supervisor tracks the process on the profile's port (default `3080`), not
 just its own PID file: `dsh status` reports a manually started server as
 `running (not supervised)`, `dsh start` adopts it, and `dsh stop` stops it.
 
-## Plugins
-
-Local plugins live in `plugins/<name>/` — each is a standard DSH client
-plugin package (builds a `lib/client.js` ModuleLoader bundle). `install.sh`
-discovers them, builds any that are missing, adds a `link:` dependency to the
-profile, and appends its cordis patch `insert` row, so they mount on the next
-restart.
-
-```text
-plugins/
-  dsh-market/     # Settings → Plugins market tab (search / sort / lazy grid)
-```
-
-- Install: `bash install.sh && dsh restart`
-- Rebuild a plugin after editing: `cd plugins/dsh-market && pnpm build && dsh restart`
-- Every plugin ships its own `cordis.patch.yml` for the npm channel, so
-  `dsh plugin --profile web add <name>` works too — remove the manual insert
-  row from the profile's `cordis.patch.yml` before switching channels to avoid
-  double-mounting.
-
 ## Development
 
 ```bash
@@ -94,8 +73,12 @@ bash lib/dsh-supervisor.sh status   # run the supervisor directly
 ```
 
 - `bin/dsh` is the entry point; the supervisor logic lives in `lib/dsh-supervisor.sh`.
-- The installer patches the profile's `cordis.patch.yml` to insert the HTTP Fetch Provider — review third-party packages before installing them.
-- The HTTP Fetch Provider expands Host network access; keep the UI bound to localhost unless you understand the security implications.
+- `dsh restart` is detached: it returns immediately, a setsid worker bounces
+  the server, and the outcome lands in `~/.dsh/profiles/<name>/dsh-restart-detached.result`
+  (`dsh restart-sync` keeps the old blocking form for scripts).
+- The supervisor deletes `cordis.yml` before starting so the booting process
+  creates it fresh — avoids macOS provenance (EPERM) conflicts between
+  processes started from different terminals/agents.
 
 ## License
 

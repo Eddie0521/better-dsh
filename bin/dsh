@@ -11,7 +11,7 @@ fi
 # (dsh web, dsh plugin …, dsh --profile …) passes through to the official
 # DeepSeek Harness CLI.
 case "${1:-}" in
-  start|stop|restart|status)
+  start|stop|restart|restart-detached|restart-d|status)
     exec bash "$SUPERVISOR" "$@"
     ;;
   --profile)
