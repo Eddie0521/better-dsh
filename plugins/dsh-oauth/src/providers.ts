@@ -1,17 +1,11 @@
 /**
- * Provider registry: maps provider names to their OAuth configuration.
- *
- * Each entry knows how to start the OAuth flow (PKCE browser flow or device
- * code flow), exchange the code for tokens, and which credential ref the
- * resulting access token should be mirrored into.
- *
- * The built-in list reuses pi-ai's own OAuth implementations where they
- * exist (anthropic, github-copilot, openrouter, openai-codex, kimi-coding,
- * xai, radius). Users can add custom providers through settings.
+ * Provider registry: maps provider names to their OAuth configuration and
+ * reuses pi-ai's built-in model catalog so reasoning levels and input
+ * modalities come for free.
  */
 
 export interface ProviderOAuthConfig {
-  /** Display name shown in /oauth status and login prompts. */
+  /** Display name shown in the settings section and login prompts. */
   label: string
   /** Authentication method: 'pkce' (browser) or 'device-code' (no browser). */
   flow: 'pkce' | 'device-code'
@@ -33,8 +27,6 @@ export interface ProviderOAuthConfig {
   pkceRequired: boolean
   /** Optional: override the default callback port (0 = OS-assigned). */
   callbackPort?: number
-  /** Optional: base URL for the provider's API (for documentation only). */
-  apiBaseUrl?: string
 }
 
 /** Built-in provider OAuth configurations. */
@@ -72,7 +64,7 @@ export const builtinProviders: Record<string, ProviderOAuthConfig> = {
     pkceRequired: false,
   },
   'openai-codex': {
-    label: 'OpenAI Codex',
+    label: 'OpenAI Codex (ChatGPT Plus/Pro)',
     flow: 'pkce',
     credentialRef: 'OPENAI_OAUTH_ACCESS_TOKEN',
     authorizeUrl: 'https://platform.openai.com/oauth/authorize',
@@ -81,12 +73,32 @@ export const builtinProviders: Record<string, ProviderOAuthConfig> = {
     scopes: ['openid', 'profile', 'email', 'offline_access'],
     pkceRequired: true,
   },
+  'kimi-coding': {
+    label: 'Kimi Code (subscription)',
+    flow: 'device-code',
+    credentialRef: 'KIMI_OAUTH_ACCESS_TOKEN',
+    deviceCodeUrl: 'https://platform.moonshot.cn/oauth/device/code',
+    tokenUrl: 'https://platform.moonshot.cn/oauth/token',
+    clientId: 'dsh-oauth',
+    scopes: ['kimi:inference'],
+    pkceRequired: false,
+  },
   xai: {
-    label: 'xAI (Grok)',
+    label: 'xAI (Grok/X subscription)',
     flow: 'pkce',
     credentialRef: 'XAI_OAUTH_ACCESS_TOKEN',
     authorizeUrl: 'https://x.ai/oauth/authorize',
     tokenUrl: 'https://x.ai/oauth/token',
+    clientId: 'dsh-oauth',
+    scopes: ['openid', 'profile'],
+    pkceRequired: true,
+  },
+  radius: {
+    label: 'Radius',
+    flow: 'pkce',
+    credentialRef: 'RADIUS_OAUTH_ACCESS_TOKEN',
+    authorizeUrl: 'https://radius.ai/oauth/authorize',
+    tokenUrl: 'https://radius.ai/oauth/token',
     clientId: 'dsh-oauth',
     scopes: ['openid', 'profile'],
     pkceRequired: true,
@@ -101,4 +113,31 @@ export function getProvider(name: string): ProviderOAuthConfig | undefined {
 /** List all available provider names. */
 export function listProviderNames(): string[] {
   return Object.keys(builtinProviders)
+}
+
+/** Get pi-ai's built-in model catalog for a provider. */
+export async function getProviderModels(providerName: string): Promise<Array<{
+  id: string
+  name: string
+  contextWindow: number
+  maxTokens: number
+  input: string[]
+  reasoning: boolean | Record<string, string | null>
+  api: string
+}>> {
+  try {
+    const mod = await import('@earendil-works/pi-ai/providers/all')
+    const models = mod.getBuiltinModels(providerName)
+    return models.map((m: any) => ({
+      id: m.id,
+      name: m.name ?? m.id,
+      contextWindow: m.contextWindow ?? 0,
+      maxTokens: m.maxTokens ?? 0,
+      input: m.input ?? ['text'],
+      reasoning: m.reasoning ?? false,
+      api: m.api ?? 'openai-completions',
+    }))
+  } catch {
+    return []
+  }
 }

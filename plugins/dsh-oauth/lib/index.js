@@ -1,5 +1,4 @@
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
-import z from "@deepseek-ai/schemastery";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 //#region src/controller.ts
@@ -33,6 +32,15 @@ var OAuthController = class {
 		this.provider = provider;
 		this.tokenSetRef = tokenSetRef;
 		this.accessTokenRef = accessTokenRef;
+	}
+	get providerName() {
+		return this.provider.label;
+	}
+	get credentialRef() {
+		return this.accessTokenRef;
+	}
+	isLoggedIn() {
+		return this.tokenSet !== void 0;
 	}
 	async start() {
 		const hit = await this.ctx.credentials.resolve(this.tokenSetRef);
@@ -451,7 +459,7 @@ const builtinProviders = {
 		pkceRequired: false
 	},
 	"openai-codex": {
-		label: "OpenAI Codex",
+		label: "OpenAI Codex (ChatGPT Plus/Pro)",
 		flow: "pkce",
 		credentialRef: "OPENAI_OAUTH_ACCESS_TOKEN",
 		authorizeUrl: "https://platform.openai.com/oauth/authorize",
@@ -465,12 +473,32 @@ const builtinProviders = {
 		],
 		pkceRequired: true
 	},
+	"kimi-coding": {
+		label: "Kimi Code (subscription)",
+		flow: "device-code",
+		credentialRef: "KIMI_OAUTH_ACCESS_TOKEN",
+		deviceCodeUrl: "https://platform.moonshot.cn/oauth/device/code",
+		tokenUrl: "https://platform.moonshot.cn/oauth/token",
+		clientId: "dsh-oauth",
+		scopes: ["kimi:inference"],
+		pkceRequired: false
+	},
 	xai: {
-		label: "xAI (Grok)",
+		label: "xAI (Grok/X subscription)",
 		flow: "pkce",
 		credentialRef: "XAI_OAUTH_ACCESS_TOKEN",
 		authorizeUrl: "https://x.ai/oauth/authorize",
 		tokenUrl: "https://x.ai/oauth/token",
+		clientId: "dsh-oauth",
+		scopes: ["openid", "profile"],
+		pkceRequired: true
+	},
+	radius: {
+		label: "Radius",
+		flow: "pkce",
+		credentialRef: "RADIUS_OAUTH_ACCESS_TOKEN",
+		authorizeUrl: "https://radius.ai/oauth/authorize",
+		tokenUrl: "https://radius.ai/oauth/token",
 		clientId: "dsh-oauth",
 		scopes: ["openid", "profile"],
 		pkceRequired: true
@@ -484,32 +512,195 @@ function getProvider(name) {
 function listProviderNames() {
 	return Object.keys(builtinProviders);
 }
+/** Get pi-ai's built-in model catalog for a provider. */
+async function getProviderModels(providerName) {
+	try {
+		return (await import("@earendil-works/pi-ai/providers/all")).getBuiltinModels(providerName).map((m) => ({
+			id: m.id,
+			name: m.name ?? m.id,
+			contextWindow: m.contextWindow ?? 0,
+			maxTokens: m.maxTokens ?? 0,
+			input: m.input ?? ["text"],
+			reasoning: m.reasoning ?? false,
+			api: m.api ?? "openai-completions"
+		}));
+	} catch {
+		return [];
+	}
+}
 //#endregion
 //#region src/index.ts
 const name = "dsh-oauth";
-const inject = ["commands", "credentials"];
-const Config = z.object({ provider: z.string().default("anthropic").description("OAuth provider name: " + listProviderNames().join(", ")) });
+const inject = [
+	"commands",
+	"credentials",
+	"webServer"
+];
 const controllers = /* @__PURE__ */ new Map();
-async function apply(ctx, config) {
-	const providerName = config.provider;
-	const provider = getProvider(providerName);
-	if (provider === void 0) {
-		ctx.logger.error(`dsh-oauth: unknown provider "${providerName}". Available: ${listProviderNames().join(", ")}`);
-		return;
+function providerCredentialRef(providerName) {
+	return getProvider(providerName)?.credentialRef ?? `${providerName.toUpperCase().replace(/-/g, "_")}_OAUTH_ACCESS_TOKEN`;
+}
+function providerTokenSetRef(providerName) {
+	return `${providerName.toUpperCase().replace(/-/g, "_")}_OAUTH_TOKENS`;
+}
+async function apply(ctx) {
+	for (const providerName of listProviderNames()) {
+		const provider = getProvider(providerName);
+		const controller = new OAuthController(ctx, provider, credentialRef(providerTokenSetRef(providerName)), credentialRef(provider.credentialRef));
+		controllers.set(providerName, controller);
+		await controller.start();
+		ctx.effect(() => () => {
+			controller.dispose();
+			controllers.delete(providerName);
+		}, `dsh-oauth.${providerName}.lifecycle`);
 	}
-	const controller = new OAuthController(ctx, provider, credentialRef(`${providerName.toUpperCase().replace(/-/g, "_")}_OAUTH_TOKENS`), credentialRef(provider.credentialRef));
-	controllers.set(providerName, controller);
-	await controller.start();
-	ctx.effect(() => () => {
-		controller.dispose();
-		controllers.delete(providerName);
-	}, "dsh-oauth.lifecycle");
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: "/oauth/api/providers",
+		handler: async (req, res) => {
+			if (req.method !== "GET") {
+				res.writeHead(405, { Allow: "GET" });
+				res.end();
+				return;
+			}
+			const list = listProviderNames().map((name) => ({
+				name,
+				label: getProvider(name).label,
+				flow: getProvider(name).flow,
+				loggedIn: controllers.get(name)?.isLoggedIn() ?? false,
+				credentialRef: providerCredentialRef(name)
+			}));
+			res.writeHead(200, {
+				"Content-Type": "application/json; charset=utf-8",
+				"Cache-Control": "no-store"
+			});
+			res.end(JSON.stringify(list));
+		}
+	}), "dsh-oauth: providers route");
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: "/oauth/api/login",
+		handler: async (req, res) => {
+			if (req.method !== "POST") {
+				res.writeHead(405, { Allow: "POST" });
+				res.end();
+				return;
+			}
+			const body = await readBody(req);
+			const { provider } = JSON.parse(body || "{}");
+			if (provider === void 0 || !controllers.has(provider)) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: false,
+					error: "Unknown provider"
+				}));
+				return;
+			}
+			try {
+				const result = await controllers.get(provider).command("login");
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: result.kind === "success",
+					text: result.text
+				}));
+			} catch (error) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: false,
+					error: error instanceof Error ? error.message : String(error)
+				}));
+			}
+		}
+	}), "dsh-oauth: login route");
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: "/oauth/api/logout",
+		handler: async (req, res) => {
+			if (req.method !== "POST") {
+				res.writeHead(405, { Allow: "POST" });
+				res.end();
+				return;
+			}
+			const body = await readBody(req);
+			const { provider } = JSON.parse(body || "{}");
+			if (provider === void 0 || !controllers.has(provider)) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: false,
+					error: "Unknown provider"
+				}));
+				return;
+			}
+			try {
+				const result = await controllers.get(provider).command("logout");
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: result.kind === "success",
+					text: result.text
+				}));
+			} catch (error) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: false,
+					error: error instanceof Error ? error.message : String(error)
+				}));
+			}
+		}
+	}), "dsh-oauth: logout route");
+	ctx.effect(() => ctx.webServer.register({
+		kind: "exact",
+		path: "/oauth/api/models",
+		handler: async (req, res) => {
+			if (req.method !== "GET") {
+				res.writeHead(405, { Allow: "GET" });
+				res.end();
+				return;
+			}
+			const provider = new URL(req.url ?? "/oauth/api/models", "http://localhost").searchParams.get("provider");
+			if (provider === void 0) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					ok: false,
+					error: "Missing provider parameter"
+				}));
+				return;
+			}
+			const models = await getProviderModels(provider);
+			res.writeHead(200, {
+				"Content-Type": "application/json; charset=utf-8",
+				"Cache-Control": "no-store"
+			});
+			res.end(JSON.stringify({
+				ok: true,
+				models
+			}));
+		}
+	}), "dsh-oauth: models route");
 	ctx.commands.register({
 		name: "oauth",
-		description: `OAuth login for ${provider.label} (login, status, logout)`,
-		input: { hint: "[login|status|logout]" },
-		handler: (invocation) => controller.command(invocation.rawInput)
+		description: "OAuth login for pi-ai providers (login, status, logout)",
+		input: { hint: "[login|status|logout] [provider]" },
+		handler: (invocation) => {
+			const parts = invocation.rawInput.trim().split(/\s+/);
+			const action = parts[0] || "status";
+			const providerName = parts[1] && controllers.has(parts[1]) ? parts[1] : listProviderNames()[0];
+			const controller = controllers.get(providerName);
+			if (controller === void 0) return Promise.resolve({
+				kind: "error",
+				text: `Unknown provider. Available: ${listProviderNames().join(", ")}`
+			});
+			return controller.command(action === providerName ? "status" : action);
+		}
+	});
+}
+function readBody(req) {
+	return new Promise((resolve) => {
+		const chunks = [];
+		req.on("data", (chunk) => {
+			if (chunk !== void 0) chunks.push(chunk);
+		});
+		req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
 	});
 }
 //#endregion
-export { Config, apply, inject, name };
+export { apply, inject, name };

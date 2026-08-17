@@ -1,13 +1,16 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: {
+    'index': 'src/index.ts',
+    'client': 'src/client/index.tsx',
+  },
+  outDir: 'lib',
   format: 'esm',
   dts: false,
   clean: true,
   target: 'node22',
   platform: 'node',
-  outDir: 'lib',
   outExtensions: () => ({ js: '.js' }),
   deps: {
     neverBundle: [
@@ -18,6 +21,8 @@ export default defineConfig({
       '@deepseek-ai/dsh-timeout',
       '@deepseek-ai/schemastery',
       '@earendil-works/pi-ai',
+      'react',
+      'react-dom',
       'node:crypto',
       'node:http',
       'node:net',

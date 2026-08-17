@@ -71,6 +71,20 @@ export class OAuthController {
     private readonly accessTokenRef: CredentialRef,
   ) {}
 
+  // ── public accessors for HTTP API ──────────────────────────────────────
+
+  get providerName(): string {
+    return this.provider.label
+  }
+
+  get credentialRef(): string {
+    return this.accessTokenRef
+  }
+
+  isLoggedIn(): boolean {
+    return this.tokenSet !== undefined
+  }
+
   // ── lifecycle ──────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
